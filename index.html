@@ -40,6 +40,18 @@
     <section>
       <div class="row">
         <div>
+          <label for="etfSel">3× ETF Preset</label>
+          <select id="etfSel">
+            <option value="">None</option>
+            <option data-index="^spx" data-fee="0.0091">UPRO – ProShares UltraPro S&amp;P 500</option>
+            <option data-index="QQQ" data-fee="0.0095">TQQQ – ProShares UltraPro QQQ</option>
+            <option data-index="^dji" data-fee="0.0095">UDOW – ProShares UltraPro Dow30</option>
+            <option data-index="IWM" data-fee="0.0095">URTY – ProShares UltraPro Russell 2000</option>
+            <option data-index="XLF" data-fee="0.0099">FAS – Direxion Daily Financial Bull 3X</option>
+          </select>
+          <div class="note">Prefills index and fee for popular 3× ETFs.</div>
+        </div>
+        <div>
           <label for="indexSel">Index</label>
           <select id="indexSel">
             <option value="^spx" selected>S&amp;P 500 (^SPX)</option>
@@ -150,6 +162,7 @@
 <script>
 const $ = sel => document.querySelector(sel);
 
+const etfSel = $("#etfSel");
 const indexSel = $("#indexSel");
 const customWrap = $("#customWrap");
 const customSym = $("#customSym");
@@ -173,6 +186,22 @@ const previewTBody = $("#previewTbl tbody");
 
 let lastCsvText = "";
 let lastRows = [];
+
+etfSel.addEventListener("change", () => {
+  const opt = etfSel.selectedOptions[0];
+  if (!opt || !opt.dataset.index) return;
+  annFee.value = opt.dataset.fee || "";
+  levSel.value = "3";
+  const idx = opt.dataset.index;
+  if (idx === "^spx" || idx === "^dji") {
+    indexSel.value = idx;
+    indexSel.dispatchEvent(new Event("change"));
+  } else {
+    indexSel.value = "custom";
+    indexSel.dispatchEvent(new Event("change"));
+    customSym.value = idx;
+  }
+});
 
 indexSel.addEventListener("change", () => {
   customWrap.classList.toggle("hidden", indexSel.value !== "custom");
