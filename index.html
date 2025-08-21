@@ -40,30 +40,23 @@
     <section>
       <div class="row">
         <div>
-          <label for="sourceSel">Data Source</label>
-          <select id="sourceSel">
-            <option value="stooq" selected>Stooq</option>
-            <option value="alphavantage">Alpha Vantage</option>
-          </select>
-          <div class="note">Select where to fetch price data.</div>
-        </div>
-        <div>
           <label for="indexSel">Index</label>
           <select id="indexSel">
             <option value="^spx" selected>S&amp;P 500 (^SPX)</option>
             <option value="^dji">Dow Jones Industrial Average (^DJI)</option>
             <option value="custom">Custom (enter symbol)</option>
           </select>
-          <div class="note">For custom, use the symbol format required by the source.</div>
+          <div class="note">For custom, use the symbol format required by Alpha Vantage.</div>
         </div>
         <div id="customWrap" class="hidden">
           <label for="customSym">Custom Symbol</label>
           <input id="customSym" placeholder="e.g., ^spx or SPX" />
-          <div class="note">Match the format required by the selected source.</div>
+          <div class="note">Match the format required by Alpha Vantage.</div>
         </div>
-        <div id="apiKeyWrap" class="hidden">
+        <div id="apiKeyWrap">
           <label for="apiKey">API Key</label>
           <input id="apiKey" placeholder="Required for Alpha Vantage" />
+          <div class="note"><a href="https://www.alphavantage.co/support/#api-key" target="_blank" rel="noopener">Get a free API key</a>.</div>
         </div>
         <div>
           <label for="levSel">Leverage</label>
@@ -112,18 +105,17 @@
         <div class="tag" id="summaryTag"></div>
         <div class="muted" id="feeInfo"></div>
       </div>
-      <p class="muted">Returns use daily closes. Volatility = daily σ × √252. Synthetic series starts at value 100 on its first row.</p>
+      <p class="muted">Returns use daily closes. Synthetic series starts at value 100 on its first row.</p>
       <div class="grid">
         <table id="metricsTbl">
           <thead>
             <tr>
               <th>Window</th>
-              <th>Start</th>
-              <th>End</th>
-              <th>CAGR (Index)</th>
-              <th>Vol (Index)</th>
-              <th>CAGR (Synth)</th>
-              <th>Vol (Synth)</th>
+              <th>Obs</th>
+              <th>Avg (Index)</th>
+              <th>Std Dev (Index)</th>
+              <th>Avg (Synth)</th>
+              <th>Std Dev (Synth)</th>
             </tr>
           </thead>
           <tbody></tbody>
@@ -148,30 +140,19 @@
         </table>
       </div>
       </section>
-      <section>
-        <h2>Free Index Data Sources</h2>
-        <ul>
-          <li><a href="https://stooq.com/">Stooq</a> – no key, daily CSV.</li>
-          <li><a href="https://www.alphavantage.co/">Alpha Vantage</a> – free API key.</li>
-          <li><a href="https://query1.finance.yahoo.com/v7/finance/download/">Yahoo Finance</a> – direct CSV download.</li>
-          <li><a href="https://www.nasdaq.com/market-activity/quotes">Nasdaq Data Link</a> – free API key.</li>
-          <li><a href="https://iexcloud.io/">IEX Cloud</a> – free tier with key.</li>
-        </ul>
-      </section>
+      <!-- Additional data sources removed; Alpha Vantage only -->
     </main>
 
     <footer>
-      Data from selected public APIs. Symbols vary by source (e.g., Stooq uses <code>^spx</code>). Education/research use only.
+      Data from <a href="https://www.alphavantage.co/">Alpha Vantage</a>. Education/research use only.
     </footer>
 
 <script>
 const $ = sel => document.querySelector(sel);
 
-const sourceSel = $("#sourceSel");
 const indexSel = $("#indexSel");
 const customWrap = $("#customWrap");
 const customSym = $("#customSym");
-const apiKeyWrap = $("#apiKeyWrap");
 const apiKey = $("#apiKey");
 const levSel = $("#levSel");
 const annFee = $("#annFee");
@@ -197,17 +178,6 @@ indexSel.addEventListener("change", () => {
   customWrap.classList.toggle("hidden", indexSel.value !== "custom");
 });
 
-sourceSel.addEventListener("change", () => {
-  apiKeyWrap.classList.toggle("hidden", sourceSel.value !== "alphavantage");
-});
-
-// Build a Stooq CSV URL from symbol; Stooq wants lowercase and ^ encoded (%5E).
-function stooqUrlFromSymbol(sym) {
-  let s = sym.trim().toLowerCase();
-  s = s.replace(/\^/g, "%5E");
-  return `https://stooq.com/q/d/l/?s=${s}&i=d`;
-}
-
 async function fetchCsv(url) {
   async function get(u) {
     const res = await fetch(u);
@@ -222,19 +192,6 @@ async function fetchCsv(url) {
     const proxied = proxy.endsWith("/") ? proxy + url : proxy + "/" + url;
     return await get(proxied);
   }
-}
-
-// Parse Stooq CSV; headers: Date,Open,High,Low,Close,Volume
-  function parseStooqCsv(text) {
-  const rows = text.trim().split(/\r?\n/).map(line => line.split(","));
-  const header = rows.shift();
-  const idxDate = header.indexOf("Date");
-  const idxClose = header.indexOf("Close");
-  if (idxDate === -1 || idxClose === -1) throw new Error("Unexpected CSV columns from Stooq.");
-  return rows.map(cols => ({
-    date: cols[idxDate],
-    close: Number(cols[idxClose])
-  })).filter(r => r.date && Number.isFinite(r.close));
 }
 
 function toDailyFee(annual, tradingDays = 252) {
@@ -288,40 +245,47 @@ function computeSeries(data, leverage, annualExpense, extraDrag) {
     })).filter(r => r.date && Number.isFinite(r.close));
   }
 
-  function symbolFor(source, sym) {
-    if (source === "alphavantage") {
-      const s = sym.replace(/^\^/, "").toUpperCase();
-      if (s === "SPX") return "SPY";
-      if (s === "DJI") return "DIA";
-      return s;
-    }
-    return sym;
+  function symbolFor(sym) {
+    const s = sym.replace(/^\^/, "").toUpperCase();
+    if (s === "SPX") return "SPY";
+    if (s === "DJI") return "DIA";
+    return s;
   }
 
   function toISODate(s) { return new Date(s + "T00:00:00Z"); }
-
-function pickWindow(rows, endISO, years) {
-  const endIdx = rows.findIndex(r => r.date === endISO);
-  const eIdx = endIdx >= 0 ? endIdx : rows.length - 1;
-  const endDate = toISODate(rows[eIdx].date);
-  const startCut = new Date(endDate);
-  startCut.setUTCFullYear(startCut.getUTCFullYear() - years);
-  let sIdx = rows.findIndex(r => toISODate(r.date) >= startCut);
-  if (sIdx === -1) sIdx = 0;
-  return { sIdx, eIdx };
-}
 
 function cagr(startVal, endVal, years) {
   if (startVal <= 0 || endVal <= 0 || years <= 0) return NaN;
   return Math.pow(endVal / startVal, 1 / years) - 1;
 }
 
-function annVol(dailyReturns) {
-  const n = dailyReturns.length;
-  if (!n) return NaN;
-  const mean = dailyReturns.reduce((a, b) => a + b, 0) / n;
-  const varSum = dailyReturns.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / (n - 1);
-  return Math.sqrt(varSum) * Math.sqrt(252);
+function mean(arr) {
+  return arr.reduce((sum, v) => sum + v, 0) / arr.length;
+}
+
+function stdDev(arr) {
+  if (arr.length < 2) return 0;
+  const m = mean(arr);
+  let s = 0;
+  for (const v of arr) s += (v - m) ** 2;
+  return Math.sqrt(s / (arr.length - 1));
+}
+
+function allCagrs(rows, years) {
+  const idx = [], lev = [];
+  for (let i = 0; i < rows.length; i++) {
+    const start = rows[i];
+    const startDate = toISODate(start.date);
+    const endDate = new Date(startDate);
+    endDate.setUTCFullYear(endDate.getUTCFullYear() + years);
+    let j = i;
+    while (j < rows.length && toISODate(rows[j].date) < endDate) j++;
+    if (j >= rows.length) break;
+    const end = rows[j];
+    idx.push(cagr(start.index, end.index, years));
+    lev.push(cagr(start.lev_value, end.lev_value, years));
+  }
+  return { idx, lev };
 }
 
 function fmtPct(x) { return Number.isFinite(x) ? (x * 100).toFixed(2) + "%" : "—"; }
@@ -371,18 +335,22 @@ function populateMetrics(rows, feeDay, endISO) {
   feeInfo.textContent = `Daily fee from annual ${(ann*100).toFixed(2)}% ≈ ${(feeDay*100).toFixed(3)} bps/day · Leverage ${levSel.value}×`;
 
   for (const y of periods) {
-    const { sIdx, eIdx } = pickWindow(rows, endDateStr, y);
-    if (eIdx - sIdx < 10) continue;
-
-    const start = rows[sIdx], end = rows[eIdx];
-    const cagrIndex = cagr(start.index, end.index, y);
-    const volIndex = annVol(rows.slice(sIdx + 1, eIdx + 1).map(r => r.ror_index));
-    const cagrLev = cagr(start.lev_value, end.lev_value, y);
-    const volLev = annVol(rows.slice(sIdx + 1, eIdx + 1).map(r => r.ror_lev));
-
+    const { idx, lev } = allCagrs(rows, y);
+    if (idx.length === 0) continue;
     const tr = document.createElement("tr");
-    [y + "y", start.date, end.date, fmtPct(cagrIndex), fmtPct(volIndex), fmtPct(cagrLev), fmtPct(volLev)]
-      .forEach(txt => { const td = document.createElement("td"); td.textContent = txt; tr.appendChild(td); });
+    const cells = [
+      y + "y",
+      idx.length,
+      fmtPct(mean(idx)),
+      fmtPct(stdDev(idx)),
+      fmtPct(mean(lev)),
+      fmtPct(stdDev(lev))
+    ];
+    cells.forEach(txt => {
+      const td = document.createElement("td");
+      td.textContent = txt;
+      tr.appendChild(td);
+    });
     metricsTBody.appendChild(tr);
   }
 }
@@ -406,28 +374,19 @@ runBtn.addEventListener("click", async () => {
     summarySec.classList.add("hidden"); previewSec.classList.add("hidden");
     statusEl.textContent = "Fetching…";
 
-      const source = sourceSel.value;
       let sym = indexSel.value;
       if (sym === "custom") {
         const c = customSym.value.trim();
         if (!c) throw new Error("Enter a custom symbol.");
         sym = c;
       }
-      sym = symbolFor(source, sym);
-      let csv, raw;
-      if (source === "alphavantage") {
-        const key = apiKey.value.trim();
-        if (!key) throw new Error("Enter API key for Alpha Vantage.");
-        const url = `https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=${encodeURIComponent(sym)}&apikey=${key}&outputsize=full&datatype=csv`;
-        csv = await fetchCsv(url);
-        raw = parseAlphaVantageCsv(csv).sort((a,b) => a.date.localeCompare(b.date));
-        if (raw.length < 2) throw new Error("Insufficient rows from Alpha Vantage.");
-      } else {
-        const url = stooqUrlFromSymbol(sym);
-        csv = await fetchCsv(url);
-        raw = parseStooqCsv(csv).sort((a,b) => a.date.localeCompare(b.date));
-        if (raw.length < 2) throw new Error("Insufficient rows from Stooq.");
-      }
+      sym = symbolFor(sym);
+      const key = apiKey.value.trim();
+      if (!key) throw new Error("Enter API key for Alpha Vantage.");
+      const url = `https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=${encodeURIComponent(sym)}&apikey=${key}&outputsize=full&datatype=csv`;
+      const csv = await fetchCsv(url);
+      const raw = parseAlphaVantageCsv(csv).sort((a,b) => a.date.localeCompare(b.date));
+      if (raw.length < 2) throw new Error("Insufficient rows from Alpha Vantage.");
 
     // Clip to end date if provided
     const endStr = (endDate.value || "").trim();
