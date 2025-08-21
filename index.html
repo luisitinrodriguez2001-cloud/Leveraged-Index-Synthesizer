@@ -266,7 +266,17 @@ function computeSeries(data, leverage, annualExpense, extraDrag) {
   }
 
   function parseAlphaVantageCsv(text) {
-    const rows = text.trim().split(/\r?\n/).map(line => line.split(","));
+    const trimmed = text.trim();
+    if (trimmed.startsWith("{")) {
+      try {
+        const obj = JSON.parse(trimmed);
+        const msg = obj["Error Message"] || obj["Note"] || obj["Information"] || "Unexpected response from Alpha Vantage.";
+        throw new Error(msg);
+      } catch (e) {
+        throw new Error("Unexpected response from Alpha Vantage.");
+      }
+    }
+    const rows = trimmed.split(/\r?\n/).map(line => line.split(","));
     const header = rows.shift();
     const idxDate = header.indexOf("timestamp");
     let idxClose = header.indexOf("adjusted_close");
@@ -280,7 +290,10 @@ function computeSeries(data, leverage, annualExpense, extraDrag) {
 
   function symbolFor(source, sym) {
     if (source === "alphavantage") {
-      return sym.replace(/^\^/, "").toUpperCase();
+      const s = sym.replace(/^\^/, "").toUpperCase();
+      if (s === "SPX") return "SPY";
+      if (s === "DJI") return "DIA";
+      return s;
     }
     return sym;
   }
