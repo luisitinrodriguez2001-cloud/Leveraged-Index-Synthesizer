@@ -1,392 +1,609 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Levered Index Synthesizer (Stooq)</title>
-<style>
-  :root { --w: 1000px; }
-  body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; line-height: 1.35; margin: 0; color: #111; background: #fff; }
-  header { padding: 16px; background: #f6f7f9; border-bottom: 1px solid #e5e7eb; }
-  main { max-width: var(--w); margin: 0 auto; padding: 20px; }
-  h1 { font-size: 20px; margin: 0 0 8px; }
-  h2 { font-size: 16px; margin: 18px 0 10px; }
-  .row { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin: 12px 0; }
-  label { font-weight: 600; display: block; margin-bottom: 6px; }
-  input, select, button { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; }
-  button.primary { background: #111827; color: white; border-color: #111827; cursor: pointer; }
-  button.ghost { background: white; color: #111827; border-color: #111827; cursor: pointer; }
-  button:disabled { opacity: 0.6; cursor: not-allowed; }
-  .note { font-size: 12px; color: #475569; margin-top: 4px; }
-  .grid { overflow-x: auto; border: 1px solid #e5e7eb; border-radius: 10px; }
-  table { border-collapse: collapse; width: 100%; }
-  th, td { border-bottom: 1px solid #f1f5f9; padding: 8px; text-align: right; white-space: nowrap; }
-  th { background: #f8fafc; text-align: left; }
-  .muted { color: #475569; }
-  .hidden { display: none; }
-  .tag { font-size: 12px; background: #eef2ff; padding: 2px 6px; border-radius: 9999px; }
-  .flex { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
-  .center { display:flex; align-items:center; gap:12px; }
-  footer { max-width: var(--w); margin: 16px auto 40px; padding: 0 20px; font-size: 12px; color: #475569; }
-</style>
-</head>
-<body>
-  <header>
-    <h1>Levered Index Synthesizer (Stooq)</h1>
-    <div class="muted">Build a UPRO-style series from daily index returns, applying a daily fee (from annual %) + extra drag, export CSV, and view trailing stats.</div>
-  </header>
-
-  <main>
-    <section>
-      <div class="row">
-        <div>
-          <label for="indexSel">Index</label>
-          <select id="indexSel">
-            <option value="^spx" selected>S&amp;P 500 (^SPX)</option>
-            <option value="^dji">Dow Jones Industrial Average (^DJI)</option>
-            <option value="custom">Custom (enter Stooq symbol)</option>
-          </select>
-          <div class="note">For custom, include caret if needed (e.g., <code>^spx</code>) or ETF like <code>upro.us</code>.</div>
-        </div>
-        <div id="customWrap" class="hidden">
-          <label for="customSym">Custom Stooq Symbol</label>
-          <input id="customSym" placeholder="e.g., ^spx or upro.us" />
-          <div class="note">Stooq CSV uses this symbol in <code>?s=SYMBOL</code>.</div>
-        </div>
-        <div>
-          <label for="levSel">Leverage</label>
-          <select id="levSel">
-            <option value="2">2×</option>
-            <option value="3" selected>3×</option>
-            <option value="4">4×</option>
-            <option value="5">5×</option>
-          </select>
-          <div class="note">Applied to the index’s <em>daily</em> return.</div>
-        </div>
-        <div>
-          <label for="annFee">Annual Expense Ratio</label>
-          <input id="annFee" type="number" step="0.0001" value="0.0091" />
-          <div class="note">Annual (e.g., <code>0.0091</code> for 0.91%). Converted to a daily fee with 252 trading days.</div>
-        </div>
-        <div>
-          <label for="drag">Extra Daily Drag</label>
-          <input id="drag" type="number" step="0.00001" placeholder="e.g., 0.00005 (~1.26%/yr) to 0.00020 (~5%/yr)" />
-          <div class="note">Optional: financing/rebalancing/inefficiency beyond the expense ratio.</div>
-        </div>
-        <div>
-          <label for="endDate">Metrics End Date (optional)</label>
-          <input id="endDate" type="date" />
-          <div class="note">Trailing windows end here; blank = last available date.</div>
-        </div>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Levered Index Synthesizer (Stooq)</title>
+    <style>
+      :root {
+        --w: 1000px;
+      }
+      body {
+        font-family:
+          system-ui,
+          -apple-system,
+          Segoe UI,
+          Roboto,
+          Arial,
+          sans-serif;
+        line-height: 1.35;
+        margin: 0;
+        color: #111;
+        background: #fff;
+      }
+      header {
+        padding: 16px;
+        background: #f6f7f9;
+        border-bottom: 1px solid #e5e7eb;
+      }
+      main {
+        max-width: var(--w);
+        margin: 0 auto;
+        padding: 20px;
+      }
+      h1 {
+        font-size: 20px;
+        margin: 0 0 8px;
+      }
+      h2 {
+        font-size: 16px;
+        margin: 18px 0 10px;
+      }
+      .row {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 12px;
+        margin: 12px 0;
+      }
+      label {
+        font-weight: 600;
+        display: block;
+        margin-bottom: 6px;
+      }
+      input,
+      select,
+      button {
+        width: 100%;
+        padding: 10px;
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        font-size: 14px;
+      }
+      button.primary {
+        background: #111827;
+        color: white;
+        border-color: #111827;
+        cursor: pointer;
+      }
+      button.ghost {
+        background: white;
+        color: #111827;
+        border-color: #111827;
+        cursor: pointer;
+      }
+      button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+      .note {
+        font-size: 12px;
+        color: #475569;
+        margin-top: 4px;
+      }
+      .grid {
+        overflow-x: auto;
+        border: 1px solid #e5e7eb;
+        border-radius: 10px;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+      }
+      th,
+      td {
+        border-bottom: 1px solid #f1f5f9;
+        padding: 8px;
+        text-align: right;
+        white-space: nowrap;
+      }
+      th {
+        background: #f8fafc;
+        text-align: left;
+      }
+      .text-left {
+        text-align: left;
+      }
+      .muted {
+        color: #475569;
+      }
+      .hidden {
+        display: none;
+      }
+      .tag {
+        font-size: 12px;
+        background: #eef2ff;
+        padding: 2px 6px;
+        border-radius: 9999px;
+      }
+      .flex {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+      .center {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      footer {
+        max-width: var(--w);
+        margin: 16px auto 40px;
+        padding: 0 20px;
+        font-size: 12px;
+        color: #475569;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Levered Index Synthesizer (Stooq)</h1>
+      <div class="muted">
+        Build a UPRO-style series from daily index returns, applying a daily fee
+        (from annual %) + extra drag, export CSV, and view trailing stats.
       </div>
+    </header>
 
-      <div class="row">
-        <div>
-          <label for="corsProxy">CORS Proxy (optional)</label>
-          <input id="corsProxy" placeholder="e.g., https://cors.isomorphic-git.org/" />
-          <div class="note">If your browser blocks direct fetch from Stooq, add a proxy. Try blank first.</div>
+    <main>
+      <section>
+        <div class="row">
+          <div>
+            <label for="indexSel">Index</label>
+            <select id="indexSel">
+              <option value="^spx" selected>S&amp;P 500 (^SPX)</option>
+              <option value="^dji">Dow Jones Industrial Average (^DJI)</option>
+              <option value="custom">Custom (enter Stooq symbol)</option>
+            </select>
+            <div class="note">
+              For custom, include caret if needed (e.g., <code>^spx</code>) or
+              ETF like <code>upro.us</code>.
+            </div>
+          </div>
+          <div id="customWrap" class="hidden">
+            <label for="customSym">Custom Stooq Symbol</label>
+            <input
+              id="customSym"
+              type="text"
+              placeholder="e.g., ^spx or upro.us"
+            />
+            <div class="note">
+              Stooq CSV uses this symbol in <code>?s=SYMBOL</code>.
+            </div>
+          </div>
+          <div>
+            <label for="levSel">Leverage</label>
+            <select id="levSel">
+              <option value="2">2×</option>
+              <option value="3" selected>3×</option>
+              <option value="4">4×</option>
+              <option value="5">5×</option>
+            </select>
+            <div class="note">
+              Applied to the index’s <em>daily</em> return.
+            </div>
+          </div>
+          <div>
+            <label for="annFee">Annual Expense Ratio</label>
+            <input id="annFee" type="number" step="0.0001" value="0.0091" />
+            <div class="note">
+              Annual (e.g., <code>0.0091</code> for 0.91%). Converted to a daily
+              fee with 252 trading days.
+            </div>
+          </div>
+          <div>
+            <label for="drag">Extra Daily Drag</label>
+            <input
+              id="drag"
+              type="number"
+              step="0.00001"
+              placeholder="e.g., 0.00005 (~1.26%/yr) to 0.00020 (~5%/yr)"
+            />
+            <div class="note">
+              Optional: financing/rebalancing/inefficiency beyond the expense
+              ratio.
+            </div>
+          </div>
+          <div>
+            <label for="endDate">Metrics End Date (optional)</label>
+            <input id="endDate" type="date" />
+            <div class="note">
+              Trailing windows end here; blank = last available date.
+            </div>
+          </div>
         </div>
-        <div class="center">
-          <button id="runBtn" class="primary">Fetch &amp; Compute</button>
-          <button id="dlBtn" class="ghost" disabled>Download CSV</button>
-          <span id="status" class="muted"></span>
+
+        <div class="row">
+          <div>
+            <label for="corsProxy">CORS Proxy (optional)</label>
+            <input
+              id="corsProxy"
+              type="text"
+              placeholder="e.g., https://cors.isomorphic-git.org/"
+            />
+            <div class="note">
+              If your browser blocks direct fetch from Stooq, add a proxy. Try
+              blank first.
+            </div>
+          </div>
+          <div class="center">
+            <button id="runBtn" class="primary" type="button">
+              Fetch &amp; Compute
+            </button>
+            <button id="dlBtn" class="ghost" type="button" disabled>
+              Download CSV
+            </button>
+            <span id="status" class="muted"></span>
+          </div>
         </div>
-      </div>
-    </section>
+      </section>
 
-    <section id="summarySec" class="hidden">
-      <h2>Summary</h2>
-      <div class="flex">
-        <div class="tag" id="summaryTag"></div>
-        <div class="muted" id="feeInfo"></div>
-      </div>
-      <p class="muted">Returns use daily closes. Volatility = daily σ × √252. Synthetic series starts at value 100 on its first row.</p>
-      <div class="grid">
-        <table id="metricsTbl">
-          <thead>
-            <tr>
-              <th>Window</th>
-              <th>Start</th>
-              <th>End</th>
-              <th>CAGR (Index)</th>
-              <th>Vol (Index)</th>
-              <th>CAGR (Synth)</th>
-              <th>Vol (Synth)</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
-    </section>
+      <section id="summarySec" class="hidden">
+        <h2>Summary</h2>
+        <div class="flex">
+          <div class="tag" id="summaryTag"></div>
+          <div class="muted" id="feeInfo"></div>
+        </div>
+        <p class="muted">
+          Returns use daily closes. Volatility = daily σ × √252. Synthetic
+          series starts at value 100 on its first row.
+        </p>
+        <div class="grid">
+          <table id="metricsTbl">
+            <thead>
+              <tr>
+                <th>Window</th>
+                <th>Start</th>
+                <th>End</th>
+                <th>CAGR (Index)</th>
+                <th>Vol (Index)</th>
+                <th>CAGR (Synth)</th>
+                <th>Vol (Synth)</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
 
-    <section id="previewSec" class="hidden">
-      <h2>Preview (last 10 rows)</h2>
-      <div class="grid">
-        <table id="previewTbl">
-          <thead>
-            <tr>
-              <th style="text-align:left;">Date</th>
-              <th>Index</th>
-              <th>Levered Value</th>
-              <th>RoR Index</th>
-              <th>RoR Levered</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
-    </section>
-  </main>
+      <section id="previewSec" class="hidden">
+        <h2>Preview (last 10 rows)</h2>
+        <div class="grid">
+          <table id="previewTbl">
+            <thead>
+              <tr>
+                <th class="text-left">Date</th>
+                <th>Index</th>
+                <th>Levered Value</th>
+                <th>RoR Index</th>
+                <th>RoR Levered</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
 
-  <footer>
-    Data: Stooq CSV <code>https://stooq.com/q/d/l/?s=SYMBOL&amp;i=d</code>.  
-    Indices often use a caret (e.g., <code>^spx</code>). Education/research use only.
-  </footer>
+    <footer>
+      Data: Stooq CSV <code>https://stooq.com/q/d/l/?s=SYMBOL&amp;i=d</code>.
+      Indices often use a caret (e.g., <code>^spx</code>). Education/research
+      use only.
+    </footer>
 
-<script>
-const $ = sel => document.querySelector(sel);
+    <script>
+      const $ = (sel) => document.querySelector(sel);
 
-const indexSel = $("#indexSel");
-const customWrap = $("#customWrap");
-const customSym = $("#customSym");
-const levSel = $("#levSel");
-const annFee = $("#annFee");
-const drag = $("#drag");
-const endDate = $("#endDate");
-const corsProxy = $("#corsProxy");
-const runBtn = $("#runBtn");
-const dlBtn = $("#dlBtn");
-const statusEl = $("#status");
+      const indexSel = $("#indexSel");
+      const customWrap = $("#customWrap");
+      const customSym = $("#customSym");
+      const levSel = $("#levSel");
+      const annFee = $("#annFee");
+      const drag = $("#drag");
+      const endDate = $("#endDate");
+      const corsProxy = $("#corsProxy");
+      const runBtn = $("#runBtn");
+      const dlBtn = $("#dlBtn");
+      const statusEl = $("#status");
 
-const summarySec = $("#summarySec");
-const summaryTag = $("#summaryTag");
-const feeInfo = $("#feeInfo");
-const metricsTBody = $("#metricsTbl tbody");
+      const summarySec = $("#summarySec");
+      const summaryTag = $("#summaryTag");
+      const feeInfo = $("#feeInfo");
+      const metricsTBody = $("#metricsTbl tbody");
 
-const previewSec = $("#previewSec");
-const previewTBody = $("#previewTbl tbody");
+      const previewSec = $("#previewSec");
+      const previewTBody = $("#previewTbl tbody");
 
-let lastCsvText = "";
-let lastRows = [];
+      let lastCsvText = "";
+      let lastRows = [];
 
-indexSel.addEventListener("change", () => {
-  customWrap.classList.toggle("hidden", indexSel.value !== "custom");
-});
+      indexSel.addEventListener("change", () => {
+        customWrap.classList.toggle("hidden", indexSel.value !== "custom");
+      });
 
-// Build a Stooq CSV URL from symbol; Stooq wants lowercase and ^ encoded (%5E).
-function stooqUrlFromSymbol(sym) {
-  let s = sym.trim().toLowerCase();
-  s = s.replace(/\^/g, "%5E");
-  return `https://stooq.com/q/d/l/?s=${s}&i=d`;
-}
+      // Build a Stooq CSV URL from symbol; Stooq wants lowercase and ^ encoded (%5E).
+      function stooqUrlFromSymbol(sym) {
+        let s = sym.trim().toLowerCase();
+        s = s.replace(/\^/g, "%5E");
+        return `https://stooq.com/q/d/l/?s=${s}&i=d`;
+      }
 
-async function fetchCsv(url) {
-  try {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return await res.text();
-  } catch (e) {
-    const proxy = corsProxy.value.trim();
-    if (!proxy) throw e;
-    const proxied = proxy.endsWith("/") ? proxy + url : proxy + "/" + url;
-    const res2 = await fetch(proxied);
-    if (!res2.ok) throw new Error(`Proxy HTTP ${res2.status}`);
-    return await res2.text();
-  }
-}
+      async function fetchCsv(url) {
+        try {
+          const res = await fetch(url);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          return await res.text();
+        } catch (e) {
+          const proxy = corsProxy.value.trim();
+          if (!proxy) throw e;
+          const proxied = proxy.endsWith("/") ? proxy + url : proxy + "/" + url;
+          const res2 = await fetch(proxied);
+          if (!res2.ok) throw new Error(`Proxy HTTP ${res2.status}`);
+          return await res2.text();
+        }
+      }
 
-// Parse Stooq CSV; headers: Date,Open,High,Low,Close,Volume
-function parseStooqCsv(text) {
-  const rows = text.trim().split(/\r?\n/).map(line => line.split(","));
-  const header = rows.shift();
-  const idxDate = header.indexOf("Date");
-  const idxClose = header.indexOf("Close");
-  if (idxDate === -1 || idxClose === -1) throw new Error("Unexpected CSV columns from Stooq.");
-  return rows.map(cols => ({
-    date: cols[idxDate],
-    close: Number(cols[idxClose])
-  })).filter(r => r.date && Number.isFinite(r.close));
-}
+      // Parse Stooq CSV; headers: Date,Open,High,Low,Close,Volume
+      function parseStooqCsv(text) {
+        const rows = text
+          .trim()
+          .split(/\r?\n/)
+          .map((line) => line.split(","));
+        const header = rows.shift();
+        const idxDate = header.indexOf("Date");
+        const idxClose = header.indexOf("Close");
+        if (idxDate === -1 || idxClose === -1)
+          throw new Error("Unexpected CSV columns from Stooq.");
+        return rows
+          .map((cols) => ({
+            date: cols[idxDate],
+            close: Number(cols[idxClose]),
+          }))
+          .filter((r) => r.date && Number.isFinite(r.close));
+      }
 
-function toDailyFee(annual, tradingDays = 252) {
-  return 1 - Math.pow(1 - annual, 1 / tradingDays);
-}
+      function toDailyFee(annual, tradingDays = 252) {
+        return 1 - Math.pow(1 - annual, 1 / tradingDays);
+      }
 
-function computeSeries(data, leverage, annualExpense, extraDrag) {
-  // data sorted ascending by date; each item {date, close}
-  if (data.length < 2) throw new Error("Not enough data points.");
-  const feeDay = toDailyFee(annualExpense, 252);
+      function computeSeries(data, leverage, annualExpense, extraDrag) {
+        // data sorted ascending by date; each item {date, close}
+        if (data.length < 2) throw new Error("Not enough data points.");
+        const feeDay = toDailyFee(annualExpense, 252);
 
-  const out = [];
-  let val = 100;
-  let prev = data[0].close;
+        const out = [];
+        let val = 100;
+        let prev = data[0].close;
 
-  out.push({ date: data[0].date, index: data[0].close, ror_index: 0, ror_lev: 0, lev_value: val });
+        out.push({
+          date: data[0].date,
+          index: data[0].close,
+          ror_index: 0,
+          ror_lev: 0,
+          lev_value: val,
+        });
 
-  for (let i = 1; i < data.length; i++) {
-    const px = data[i].close;
-    const r = px / prev - 1;
-    const pre = leverage * r;
-    const post = (1 + pre) * (1 - feeDay) - 1 - (extraDrag || 0);
-    val *= (1 + post);
-    out.push({ date: data[i].date, index: px, ror_index: r, ror_lev: post, lev_value: val });
-    prev = px;
-  }
-  return { rows: out, feeDay };
-}
+        for (let i = 1; i < data.length; i++) {
+          const px = data[i].close;
+          const r = px / prev - 1;
+          const pre = leverage * r;
+          const post = (1 + pre) * (1 - feeDay) - 1 - (extraDrag || 0);
+          val *= 1 + post;
+          out.push({
+            date: data[i].date,
+            index: px,
+            ror_index: r,
+            ror_lev: post,
+            lev_value: val,
+          });
+          prev = px;
+        }
+        return { rows: out, feeDay };
+      }
 
-function toISODate(s) { return new Date(s + "T00:00:00Z"); }
+      function toISODate(s) {
+        return new Date(s + "T00:00:00Z");
+      }
 
-function pickWindow(rows, endISO, years) {
-  const endIdx = rows.findIndex(r => r.date === endISO);
-  const eIdx = endIdx >= 0 ? endIdx : rows.length - 1;
-  const endDate = toISODate(rows[eIdx].date);
-  const startCut = new Date(endDate);
-  startCut.setUTCFullYear(startCut.getUTCFullYear() - years);
-  let sIdx = rows.findIndex(r => toISODate(r.date) >= startCut);
-  if (sIdx === -1) sIdx = 0;
-  return { sIdx, eIdx };
-}
+      function pickWindow(rows, endISO, years) {
+        const endIdx = rows.findIndex((r) => r.date === endISO);
+        const eIdx = endIdx >= 0 ? endIdx : rows.length - 1;
+        const endDate = toISODate(rows[eIdx].date);
+        const startCut = new Date(endDate);
+        startCut.setUTCFullYear(startCut.getUTCFullYear() - years);
+        let sIdx = rows.findIndex((r) => toISODate(r.date) >= startCut);
+        if (sIdx === -1) sIdx = 0;
+        return { sIdx, eIdx };
+      }
 
-function cagr(startVal, endVal, years) {
-  if (startVal <= 0 || endVal <= 0 || years <= 0) return NaN;
-  return Math.pow(endVal / startVal, 1 / years) - 1;
-}
+      function cagr(startVal, endVal, years) {
+        if (startVal <= 0 || endVal <= 0 || years <= 0) return NaN;
+        return Math.pow(endVal / startVal, 1 / years) - 1;
+      }
 
-function annVol(dailyReturns) {
-  const n = dailyReturns.length;
-  if (!n) return NaN;
-  const mean = dailyReturns.reduce((a, b) => a + b, 0) / n;
-  const varSum = dailyReturns.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / (n - 1);
-  return Math.sqrt(varSum) * Math.sqrt(252);
-}
+      function annVol(dailyReturns) {
+        const n = dailyReturns.length;
+        if (!n) return NaN;
+        const mean = dailyReturns.reduce((a, b) => a + b, 0) / n;
+        const varSum =
+          dailyReturns.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / (n - 1);
+        return Math.sqrt(varSum) * Math.sqrt(252);
+      }
 
-function fmtPct(x) { return Number.isFinite(x) ? (x * 100).toFixed(2) + "%" : "—"; }
-function fmtNum(x) { return Number.isFinite(x) ? x.toLocaleString(undefined, { maximumFractionDigits: 6 }) : "—"; }
+      function fmtPct(x) {
+        return Number.isFinite(x) ? (x * 100).toFixed(2) + "%" : "—";
+      }
+      function fmtNum(x) {
+        return Number.isFinite(x)
+          ? x.toLocaleString(undefined, { maximumFractionDigits: 6 })
+          : "—";
+      }
 
-function buildCsv(rows) {
-  const header = ["Date","index","leveraged_est_value","ror_index","ror_3x_est"];
-  const lines = [header.join(",")];
-  for (const r of rows) {
-    lines.push([
-      r.date,
-      r.index,
-      r.lev_value,
-      r.ror_index,
-      r.ror_lev
-    ].join(","));
-  }
-  return lines.join("\n");
-}
+      function buildCsv(rows, leverage) {
+        const header = [
+          "Date",
+          "index",
+          "leveraged_est_value",
+          "ror_index",
+          `ror_${leverage}x_est`,
+        ];
+        const lines = [header.join(",")];
+        for (const r of rows) {
+          lines.push(
+            [r.date, r.index, r.lev_value, r.ror_index, r.ror_lev].join(","),
+          );
+        }
+        return lines.join("\n");
+      }
 
-function populatePreview(rows) {
-  previewTBody.innerHTML = "";
-  const last = rows.slice(-10);
-  for (const r of last) {
-    const tr = document.createElement("tr");
-    const cells = [r.date, fmtNum(r.index), fmtNum(r.lev_value), fmtNum(r.ror_index), fmtNum(r.ror_lev)];
-    cells.forEach((v, i) => {
-      const td = document.createElement("td");
-      if (i === 0) td.style.textAlign = "left";
-      td.textContent = v;
-      tr.appendChild(td);
-    });
-    previewTBody.appendChild(tr);
-  }
-}
+      function populatePreview(rows) {
+        previewTBody.innerHTML = "";
+        const last = rows.slice(-10);
+        for (const r of last) {
+          const tr = document.createElement("tr");
+          const cells = [
+            r.date,
+            fmtNum(r.index),
+            fmtNum(r.lev_value),
+            fmtNum(r.ror_index),
+            fmtNum(r.ror_lev),
+          ];
+          cells.forEach((v, i) => {
+            const td = document.createElement("td");
+            if (i === 0) td.classList.add("text-left");
+            td.textContent = v;
+            tr.appendChild(td);
+          });
+          previewTBody.appendChild(tr);
+        }
+      }
 
-function populateMetrics(rows, feeDay, endISO) {
-  summarySec.classList.remove("hidden");
-  metricsTBody.innerHTML = "";
+      function populateMetrics(rows, feeDay, endISO) {
+        summarySec.classList.remove("hidden");
+        metricsTBody.innerHTML = "";
 
-  const periods = [5, 10, 15, 20, 30];
-  const endRow = endISO ? rows.find(r => r.date === endISO) : rows[rows.length - 1];
-  const endDateStr = endRow.date;
+        const periods = [5, 10, 15, 20, 30];
+        const endRow = endISO
+          ? rows.find((r) => r.date === endISO)
+          : rows[rows.length - 1];
+        const endDateStr = endRow.date;
 
-  summaryTag.textContent = `End: ${endDateStr}`;
-  const ann = Number(annFee.value);
-  feeInfo.textContent = `Daily fee from annual ${(ann*100).toFixed(2)}% ≈ ${(feeDay*100).toFixed(3)} bps/day · Leverage ${levSel.value}×`;
+        summaryTag.textContent = `End: ${endDateStr}`;
+        const ann = Number(annFee.value);
+        feeInfo.textContent = `Daily fee from annual ${(ann * 100).toFixed(2)}% ≈ ${(feeDay * 100).toFixed(3)} bps/day · Leverage ${levSel.value}×`;
 
-  for (const y of periods) {
-    const { sIdx, eIdx } = pickWindow(rows, endDateStr, y);
-    if (eIdx - sIdx < 10) continue;
+        for (const y of periods) {
+          const { sIdx, eIdx } = pickWindow(rows, endDateStr, y);
+          if (eIdx - sIdx < 10) continue;
 
-    const start = rows[sIdx], end = rows[eIdx];
-    const cagrIndex = cagr(start.index, end.index, y);
-    const volIndex = annVol(rows.slice(sIdx + 1, eIdx + 1).map(r => r.ror_index));
-    const cagrLev = cagr(start.lev_value, end.lev_value, y);
-    const volLev = annVol(rows.slice(sIdx + 1, eIdx + 1).map(r => r.ror_lev));
+          const start = rows[sIdx],
+            end = rows[eIdx];
+          const cagrIndex = cagr(start.index, end.index, y);
+          const volIndex = annVol(
+            rows.slice(sIdx + 1, eIdx + 1).map((r) => r.ror_index),
+          );
+          const cagrLev = cagr(start.lev_value, end.lev_value, y);
+          const volLev = annVol(
+            rows.slice(sIdx + 1, eIdx + 1).map((r) => r.ror_lev),
+          );
 
-    const tr = document.createElement("tr");
-    [y + "y", start.date, end.date, fmtPct(cagrIndex), fmtPct(volIndex), fmtPct(cagrLev), fmtPct(volLev)]
-      .forEach(txt => { const td = document.createElement("td"); td.textContent = txt; tr.appendChild(td); });
-    metricsTBody.appendChild(tr);
-  }
-}
+          const tr = document.createElement("tr");
+          [
+            y + "y",
+            start.date,
+            end.date,
+            fmtPct(cagrIndex),
+            fmtPct(volIndex),
+            fmtPct(cagrLev),
+            fmtPct(volLev),
+          ].forEach((txt) => {
+            const td = document.createElement("td");
+            td.textContent = txt;
+            tr.appendChild(td);
+          });
+          metricsTBody.appendChild(tr);
+        }
+      }
 
-dlBtn.addEventListener("click", () => {
-  if (!lastCsvText) return;
-  const blob = new Blob([lastCsvText], { type: "text/csv;charset=utf-8" });
-  const a = document.createElement("a");
-  const idxLabel = (indexSel.value === "custom" ? (customSym.value || "custom") : indexSel.value).replace("%5E","^");
-  a.href = URL.createObjectURL(blob);
-  a.download = `synth_${idxLabel}_${levSel.value}x.csv`;
-  document.body.appendChild(a);
-  a.click();
-  URL.revokeObjectURL(a.href);
-  a.remove();
-});
+      dlBtn.addEventListener("click", () => {
+        if (!lastCsvText) return;
+        const blob = new Blob([lastCsvText], {
+          type: "text/csv;charset=utf-8",
+        });
+        const a = document.createElement("a");
+        const idxLabel = (
+          indexSel.value === "custom"
+            ? customSym.value || "custom"
+            : indexSel.value
+        ).replace("%5E", "^");
+        a.href = URL.createObjectURL(blob);
+        a.download = `synth_${idxLabel}_${levSel.value}x.csv`;
+        document.body.appendChild(a);
+        a.click();
+        URL.revokeObjectURL(a.href);
+        a.remove();
+      });
 
-runBtn.addEventListener("click", async () => {
-  try {
-    runBtn.disabled = true; dlBtn.disabled = true;
-    summarySec.classList.add("hidden"); previewSec.classList.add("hidden");
-    statusEl.textContent = "Fetching…";
+      runBtn.addEventListener("click", async () => {
+        try {
+          runBtn.disabled = true;
+          dlBtn.disabled = true;
+          summarySec.classList.add("hidden");
+          previewSec.classList.add("hidden");
+          statusEl.textContent = "Fetching…";
 
-    let sym = indexSel.value;
-    if (sym === "custom") {
-      const c = customSym.value.trim();
-      if (!c) throw new Error("Enter a custom Stooq symbol.");
-      sym = c;
-    }
-    const url = stooqUrlFromSymbol(sym);
-    const csv = await fetchCsv(url);
-    const raw = parseStooqCsv(csv).sort((a,b) => a.date.localeCompare(b.date));
-    if (raw.length < 2) throw new Error("Insufficient rows from Stooq.");
+          let sym = indexSel.value;
+          if (sym === "custom") {
+            const c = customSym.value.trim();
+            if (!c) throw new Error("Enter a custom Stooq symbol.");
+            sym = c;
+          }
+          const url = stooqUrlFromSymbol(sym);
+          const csv = await fetchCsv(url);
+          const raw = parseStooqCsv(csv).sort((a, b) =>
+            a.date.localeCompare(b.date),
+          );
+          if (raw.length < 2) throw new Error("Insufficient rows from Stooq.");
 
-    // Clip to end date if provided
-    const endStr = (endDate.value || "").trim();
-    let data = raw, endISO = "";
-    if (endStr) {
-      const cut = new Date(endStr + "T00:00:00Z");
-      data = raw.filter(r => new Date(r.date + "T00:00:00Z") <= cut);
-      if (data.length < 2) throw new Error("End date too early—no data remains.");
-      endISO = data[data.length - 1].date;
-    }
+          // Clip to end date if provided
+          const endStr = (endDate.value || "").trim();
+          let data = raw,
+            endISO = "";
+          if (endStr) {
+            const cut = new Date(endStr + "T00:00:00Z");
+            data = raw.filter((r) => new Date(r.date + "T00:00:00Z") <= cut);
+            if (data.length < 2)
+              throw new Error("End date too early—no data remains.");
+            endISO = data[data.length - 1].date;
+          }
 
-    const leverage = Number(levSel.value);
-    const annualExpense = Number(annFee.value || 0);
-    const extraDrag = Number(drag.value || 0);
+          const leverage = Number(levSel.value);
+          const annualExpense = Number(annFee.value || 0);
+          const extraDrag = Number(drag.value || 0);
 
-    const { rows, feeDay } = computeSeries(data, leverage, annualExpense, extraDrag);
+          const { rows, feeDay } = computeSeries(
+            data,
+            leverage,
+            annualExpense,
+            extraDrag,
+          );
 
-    lastRows = rows;
-    lastCsvText = buildCsv(rows);
+          lastRows = rows;
+          lastCsvText = buildCsv(rows, leverage);
 
-    // UI
-    previewTBody.innerHTML = "";
-    populatePreview(rows);
-    previewSec.classList.remove("hidden");
-    populateMetrics(rows, feeDay, endISO);
-    dlBtn.disabled = false;
-    statusEl.textContent = `Done · ${rows.length.toLocaleString()} rows`;
-  } catch (err) {
-    console.error(err);
-    statusEl.textContent = `Error: ${err.message}`;
-  } finally {
-    runBtn.disabled = false;
-  }
-});
-</script>
-</body>
+          // UI
+          previewTBody.innerHTML = "";
+          populatePreview(rows);
+          previewSec.classList.remove("hidden");
+          populateMetrics(rows, feeDay, endISO);
+          dlBtn.disabled = false;
+          statusEl.textContent = `Done · ${rows.length.toLocaleString()} rows`;
+        } catch (err) {
+          console.error(err);
+          statusEl.textContent = `Error: ${err.message}`;
+        } finally {
+          runBtn.disabled = false;
+        }
+      });
+    </script>
+  </body>
 </html>
