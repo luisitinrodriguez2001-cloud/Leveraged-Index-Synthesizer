@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Levered Index Synthesizer (Stooq)</title>
+<title>Levered Index Synthesizer</title>
 <style>
   :root { --w: 1000px; }
   body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; line-height: 1.35; margin: 0; color: #111; background: #fff; }
@@ -32,7 +32,7 @@
 </head>
 <body>
   <header>
-    <h1>Levered Index Synthesizer (Stooq)</h1>
+    <h1>Levered Index Synthesizer</h1>
     <div class="muted">Build a UPRO-style series from daily index returns, applying a daily fee (from annual %) + extra drag, export CSV, and view trailing stats.</div>
   </header>
 
@@ -40,18 +40,30 @@
     <section>
       <div class="row">
         <div>
+          <label for="sourceSel">Data Source</label>
+          <select id="sourceSel">
+            <option value="stooq" selected>Stooq</option>
+            <option value="alphavantage">Alpha Vantage</option>
+          </select>
+          <div class="note">Select where to fetch price data.</div>
+        </div>
+        <div>
           <label for="indexSel">Index</label>
           <select id="indexSel">
             <option value="^spx" selected>S&amp;P 500 (^SPX)</option>
             <option value="^dji">Dow Jones Industrial Average (^DJI)</option>
-            <option value="custom">Custom (enter Stooq symbol)</option>
+            <option value="custom">Custom (enter symbol)</option>
           </select>
-          <div class="note">For custom, include caret if needed (e.g., <code>^spx</code>) or ETF like <code>upro.us</code>.</div>
+          <div class="note">For custom, use the symbol format required by the source.</div>
         </div>
         <div id="customWrap" class="hidden">
-          <label for="customSym">Custom Stooq Symbol</label>
-          <input id="customSym" placeholder="e.g., ^spx or upro.us" />
-          <div class="note">Stooq CSV uses this symbol in <code>?s=SYMBOL</code>.</div>
+          <label for="customSym">Custom Symbol</label>
+          <input id="customSym" placeholder="e.g., ^spx or SPX" />
+          <div class="note">Match the format required by the selected source.</div>
+        </div>
+        <div id="apiKeyWrap" class="hidden">
+          <label for="apiKey">API Key</label>
+          <input id="apiKey" placeholder="Required for Alpha Vantage" />
         </div>
         <div>
           <label for="levSel">Leverage</label>
@@ -135,20 +147,32 @@
           <tbody></tbody>
         </table>
       </div>
-    </section>
-  </main>
+      </section>
+      <section>
+        <h2>Free Index Data Sources</h2>
+        <ul>
+          <li><a href="https://stooq.com/">Stooq</a> – no key, daily CSV.</li>
+          <li><a href="https://www.alphavantage.co/">Alpha Vantage</a> – free API key.</li>
+          <li><a href="https://query1.finance.yahoo.com/v7/finance/download/">Yahoo Finance</a> – direct CSV download.</li>
+          <li><a href="https://www.nasdaq.com/market-activity/quotes">Nasdaq Data Link</a> – free API key.</li>
+          <li><a href="https://iexcloud.io/">IEX Cloud</a> – free tier with key.</li>
+        </ul>
+      </section>
+    </main>
 
-  <footer>
-    Data: Stooq CSV <code>https://stooq.com/q/d/l/?s=SYMBOL&amp;i=d</code>.  
-    Indices often use a caret (e.g., <code>^spx</code>). Education/research use only.
-  </footer>
+    <footer>
+      Data from selected public APIs. Symbols vary by source (e.g., Stooq uses <code>^spx</code>). Education/research use only.
+    </footer>
 
 <script>
 const $ = sel => document.querySelector(sel);
 
+const sourceSel = $("#sourceSel");
 const indexSel = $("#indexSel");
 const customWrap = $("#customWrap");
 const customSym = $("#customSym");
+const apiKeyWrap = $("#apiKeyWrap");
+const apiKey = $("#apiKey");
 const levSel = $("#levSel");
 const annFee = $("#annFee");
 const drag = $("#drag");
@@ -171,6 +195,10 @@ let lastRows = [];
 
 indexSel.addEventListener("change", () => {
   customWrap.classList.toggle("hidden", indexSel.value !== "custom");
+});
+
+sourceSel.addEventListener("change", () => {
+  apiKeyWrap.classList.toggle("hidden", sourceSel.value !== "alphavantage");
 });
 
 // Build a Stooq CSV URL from symbol; Stooq wants lowercase and ^ encoded (%5E).
@@ -197,7 +225,7 @@ async function fetchCsv(url) {
 }
 
 // Parse Stooq CSV; headers: Date,Open,High,Low,Close,Volume
-function parseStooqCsv(text) {
+  function parseStooqCsv(text) {
   const rows = text.trim().split(/\r?\n/).map(line => line.split(","));
   const header = rows.shift();
   const idxDate = header.indexOf("Date");
@@ -233,10 +261,30 @@ function computeSeries(data, leverage, annualExpense, extraDrag) {
     out.push({ date: data[i].date, index: px, ror_index: r, ror_lev: post, lev_value: val });
     prev = px;
   }
-  return { rows: out, feeDay };
-}
 
-function toISODate(s) { return new Date(s + "T00:00:00Z"); }
+    return { rows: out, feeDay };
+  }
+
+  function parseAlphaVantageCsv(text) {
+    const rows = text.trim().split(/\r?\n/).map(line => line.split(","));
+    const header = rows.shift();
+    const idxDate = header.indexOf("timestamp");
+    const idxClose = header.indexOf("adjusted_close");
+    if (idxDate === -1 || idxClose === -1) throw new Error("Unexpected CSV columns from Alpha Vantage.");
+    return rows.map(cols => ({
+      date: cols[idxDate],
+      close: Number(cols[idxClose])
+    })).filter(r => r.date && Number.isFinite(r.close));
+  }
+
+  function symbolFor(source, sym) {
+    if (source === "alphavantage") {
+      return sym.replace(/^\^/, "").toUpperCase();
+    }
+    return sym;
+  }
+
+  function toISODate(s) { return new Date(s + "T00:00:00Z"); }
 
 function pickWindow(rows, endISO, years) {
   const endIdx = rows.findIndex(r => r.date === endISO);
@@ -344,16 +392,28 @@ runBtn.addEventListener("click", async () => {
     summarySec.classList.add("hidden"); previewSec.classList.add("hidden");
     statusEl.textContent = "Fetching…";
 
-    let sym = indexSel.value;
-    if (sym === "custom") {
-      const c = customSym.value.trim();
-      if (!c) throw new Error("Enter a custom Stooq symbol.");
-      sym = c;
-    }
-    const url = stooqUrlFromSymbol(sym);
-    const csv = await fetchCsv(url);
-    const raw = parseStooqCsv(csv).sort((a,b) => a.date.localeCompare(b.date));
-    if (raw.length < 2) throw new Error("Insufficient rows from Stooq.");
+      const source = sourceSel.value;
+      let sym = indexSel.value;
+      if (sym === "custom") {
+        const c = customSym.value.trim();
+        if (!c) throw new Error("Enter a custom symbol.");
+        sym = c;
+      }
+      sym = symbolFor(source, sym);
+      let csv, raw;
+      if (source === "alphavantage") {
+        const key = apiKey.value.trim();
+        if (!key) throw new Error("Enter API key for Alpha Vantage.");
+        const url = `https://www.alphavantage.co/query?function=TIME_SERIES_DAILY_ADJUSTED&symbol=${encodeURIComponent(sym)}&apikey=${key}&outputsize=full&datatype=csv`;
+        csv = await fetchCsv(url);
+        raw = parseAlphaVantageCsv(csv).sort((a,b) => a.date.localeCompare(b.date));
+        if (raw.length < 2) throw new Error("Insufficient rows from Alpha Vantage.");
+      } else {
+        const url = stooqUrlFromSymbol(sym);
+        csv = await fetchCsv(url);
+        raw = parseStooqCsv(csv).sort((a,b) => a.date.localeCompare(b.date));
+        if (raw.length < 2) throw new Error("Insufficient rows from Stooq.");
+      }
 
     // Clip to end date if provided
     const endStr = (endDate.value || "").trim();
