@@ -269,7 +269,8 @@ function computeSeries(data, leverage, annualExpense, extraDrag) {
     const rows = text.trim().split(/\r?\n/).map(line => line.split(","));
     const header = rows.shift();
     const idxDate = header.indexOf("timestamp");
-    const idxClose = header.indexOf("adjusted_close");
+    let idxClose = header.indexOf("adjusted_close");
+    if (idxClose === -1) idxClose = header.indexOf("close");
     if (idxDate === -1 || idxClose === -1) throw new Error("Unexpected CSV columns from Alpha Vantage.");
     return rows.map(cols => ({
       date: cols[idxDate],
@@ -404,7 +405,7 @@ runBtn.addEventListener("click", async () => {
       if (source === "alphavantage") {
         const key = apiKey.value.trim();
         if (!key) throw new Error("Enter API key for Alpha Vantage.");
-        const url = `https://www.alphavantage.co/query?function=TIME_SERIES_DAILY_ADJUSTED&symbol=${encodeURIComponent(sym)}&apikey=${key}&outputsize=full&datatype=csv`;
+        const url = `https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=${encodeURIComponent(sym)}&apikey=${key}&outputsize=full&datatype=csv`;
         csv = await fetchCsv(url);
         raw = parseAlphaVantageCsv(csv).sort((a,b) => a.date.localeCompare(b.date));
         if (raw.length < 2) throw new Error("Insufficient rows from Alpha Vantage.");
