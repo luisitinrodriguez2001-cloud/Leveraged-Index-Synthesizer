@@ -29,6 +29,7 @@
   .center { display:flex; align-items:center; gap:12px; }
   footer { max-width: var(--w); margin: 16px auto 40px; padding: 0 20px; font-size: 12px; color: #475569; }
 </style>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0"></script>
 </head>
 <body>
   <header>
@@ -117,7 +118,7 @@
         <div class="tag" id="summaryTag"></div>
         <div class="muted" id="feeInfo"></div>
       </div>
-      <p class="muted">Returns use daily closes. Synthetic series starts at value 100 on its first row.</p>
+      <p class="muted">Returns use daily closes. Synthetic series starts at value 1 on its first row.</p>
       <div class="grid">
         <table id="metricsTbl">
           <thead>
@@ -134,6 +135,27 @@
           </thead>
           <tbody></tbody>
         </table>
+      </div>
+    </section>
+
+    <section id="chartSec" class="hidden">
+      <h2>Rolling CAGR</h2>
+      <div class="row">
+        <div>
+          <label for="rollSel">Window</label>
+          <select id="rollSel">
+            <option value="1">1-year</option>
+            <option value="3">3-year</option>
+            <option value="5" selected>5-year</option>
+            <option value="10">10-year</option>
+            <option value="15">15-year</option>
+            <option value="20">20-year</option>
+            <option value="30">30-year</option>
+          </select>
+        </div>
+      </div>
+      <div class="grid">
+        <canvas id="rollChart"></canvas>
       </div>
     </section>
 
@@ -186,9 +208,14 @@ const metricsTBody = $("#metricsTbl tbody");
 const previewSec = $("#previewSec");
 const previewTBody = $("#previewTbl tbody");
 
+const chartSec = $("#chartSec");
+const rollSel = $("#rollSel");
+const rollChartCanvas = $("#rollChart");
+
 let lastCsvText = "";
 let lastRows = [];
 let lastActualRows = [];
+let rollChart = null;
 
 etfSel.addEventListener("change", () => {
   const opt = etfSel.selectedOptions[0];
@@ -202,6 +229,12 @@ etfSel.addEventListener("change", () => {
 
 indexSel.addEventListener("change", () => {
   customWrap.classList.toggle("hidden", indexSel.value !== "custom");
+});
+
+rollSel.addEventListener("change", () => {
+  if (!chartSec.classList.contains("hidden") && lastRows.length) {
+    updateChart(Number(rollSel.value));
+  }
 });
 
 async function fetchCsv(url) {
@@ -220,6 +253,39 @@ async function fetchCsv(url) {
   }
 }
 
+function updateChart(years) {
+  const s = rollingSeries(lastRows, years);
+  const labels = s.dates;
+  const idxVals = s.idx.map(v => v * 100);
+  const levVals = s.lev.map(v => v * 100);
+  const datasets = [
+    { label: "Index", data: idxVals, borderColor: "#1f77b4", tension: 0.1, spanGaps: true },
+    { label: `${levSel.value}× Synth`, data: levVals, borderColor: "#d62728", tension: 0.1, spanGaps: true }
+  ];
+  if (lastActualRows.length) {
+    const a = rollingSeriesActual(lastActualRows, years);
+    const map = new Map(a.dates.map((d,i) => [d, a.act[i] * 100]));
+    const actVals = labels.map(d => map.has(d) ? map.get(d) : NaN);
+    datasets.push({ label: `${etfSel.value} Actual`, data: actVals, borderColor: "#2ca02c", tension: 0.1, spanGaps: true });
+  }
+  if (rollChart) {
+    rollChart.data.labels = labels;
+    rollChart.data.datasets = datasets;
+    rollChart.update();
+  } else {
+    rollChart = new Chart(rollChartCanvas, {
+      type: "line",
+      data: { labels, datasets },
+      options: {
+        responsive: true,
+        interaction: { mode: "index", intersect: false },
+        scales: { y: { ticks: { callback: v => v + "%" } } },
+        plugins: { tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(2)}%` } } }
+      }
+    });
+  }
+}
+
 function toDailyFee(annual, tradingDays = 252) {
   return 1 - Math.pow(1 - annual, 1 / tradingDays);
 }
@@ -230,7 +296,7 @@ function computeSeries(data, leverage, annualExpense, extraDrag) {
   const feeDay = toDailyFee(annualExpense, 252);
 
   const out = [];
-  let val = 100;
+  let val = 1;
   let prev = data[0].close;
 
   out.push({ date: data[0].date, index: data[0].close, ror_index: 0, ror_lev: 0, lev_value: val });
@@ -338,6 +404,48 @@ function allCagrsActual(rows, years) {
   return out;
 }
 
+function rollingSeries(rows, years) {
+  const dates = [], idx = [], lev = [];
+  for (let i = 0; i < rows.length; i++) {
+    const start = rows[i];
+    const startDate = toISODate(start.date);
+    const endDate = new Date(startDate);
+    endDate.setUTCFullYear(endDate.getUTCFullYear() + years);
+    let j = i;
+    while (j < rows.length && toISODate(rows[j].date) < endDate) j++;
+    if (j >= rows.length) break;
+    const end = rows[j];
+    const cIdx = cagr(start.index, end.index, years);
+    const cLev = cagr(start.lev_value, end.lev_value, years);
+    if (Number.isFinite(cIdx) && Number.isFinite(cLev)) {
+      dates.push(start.date);
+      idx.push(cIdx);
+      lev.push(cLev);
+    }
+  }
+  return { dates, idx, lev };
+}
+
+function rollingSeriesActual(rows, years) {
+  const dates = [], act = [];
+  for (let i = 0; i < rows.length; i++) {
+    const start = rows[i];
+    const startDate = toISODate(start.date);
+    const endDate = new Date(startDate);
+    endDate.setUTCFullYear(endDate.getUTCFullYear() + years);
+    let j = i;
+    while (j < rows.length && toISODate(rows[j].date) < endDate) j++;
+    if (j >= rows.length) break;
+    const end = rows[j];
+    const c = cagr(start.close, end.close, years);
+    if (Number.isFinite(c)) {
+      dates.push(start.date);
+      act.push(c);
+    }
+  }
+  return { dates, act };
+}
+
 function fmtPct(x) { return Number.isFinite(x) ? (x * 100).toFixed(2) + "%" : "—"; }
 function fmtNum(x) { return Number.isFinite(x) ? x.toLocaleString(undefined, { maximumFractionDigits: 6 }) : "—"; }
 
@@ -424,7 +532,7 @@ dlBtn.addEventListener("click", () => {
 runBtn.addEventListener("click", async () => {
   try {
     runBtn.disabled = true; dlBtn.disabled = true;
-    summarySec.classList.add("hidden"); previewSec.classList.add("hidden");
+    summarySec.classList.add("hidden"); previewSec.classList.add("hidden"); chartSec.classList.add("hidden");
     statusEl.textContent = "Fetching…";
 
       let sym = indexSel.value;
@@ -478,6 +586,8 @@ runBtn.addEventListener("click", async () => {
     populatePreview(rows);
     previewSec.classList.remove("hidden");
     populateMetrics(rows, feeDay, endISO);
+    chartSec.classList.remove("hidden");
+    updateChart(Number(rollSel.value));
     dlBtn.disabled = false;
     statusEl.textContent = `Done · ${rows.length.toLocaleString()} rows`;
   } catch (err) {
