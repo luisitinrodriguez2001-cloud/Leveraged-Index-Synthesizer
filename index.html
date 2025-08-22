@@ -240,8 +240,13 @@ function computeSeries(data, leverage, annualExpense, extraDrag) {
     const r = px / prev - 1;
     const pre = leverage * r;
     const post = (1 + pre) * (1 - feeDay) - 1 - (extraDrag || 0);
-    val *= (1 + post);
-    out.push({ date: data[i].date, index: px, ror_index: r, ror_lev: post, lev_value: val });
+    if (val <= 0 || (1 + post) <= 0) {
+      val = 0;
+      out.push({ date: data[i].date, index: px, ror_index: r, ror_lev: -1, lev_value: val });
+    } else {
+      val *= (1 + post);
+      out.push({ date: data[i].date, index: px, ror_index: r, ror_lev: post, lev_value: val });
+    }
     prev = px;
   }
 
@@ -308,8 +313,10 @@ function allCagrs(rows, years) {
     while (j < rows.length && toISODate(rows[j].date) < endDate) j++;
     if (j >= rows.length) break;
     const end = rows[j];
-    idx.push(cagr(start.index, end.index, years));
-    lev.push(cagr(start.lev_value, end.lev_value, years));
+    const cIdx = cagr(start.index, end.index, years);
+    if (Number.isFinite(cIdx)) idx.push(cIdx);
+    const cLev = cagr(start.lev_value, end.lev_value, years);
+    if (Number.isFinite(cLev)) lev.push(cLev);
   }
   return { idx, lev };
 }
@@ -325,7 +332,8 @@ function allCagrsActual(rows, years) {
     while (j < rows.length && toISODate(rows[j].date) < endDate) j++;
     if (j >= rows.length) break;
     const end = rows[j];
-    out.push(cagr(start.close, end.close, years));
+    const c = cagr(start.close, end.close, years);
+    if (Number.isFinite(c)) out.push(c);
   }
   return out;
 }
