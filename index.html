@@ -27,6 +27,7 @@
   .tag { font-size: 12px; background: #eef2ff; padding: 2px 6px; border-radius: 9999px; }
   .flex { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
   .center { display:flex; align-items:center; gap:12px; }
+  .info-icon { margin-left:4px; color:#6b7280; cursor:help; font-size:12px; }
   footer { max-width: var(--w); margin: 16px auto 40px; padding: 0 20px; font-size: 12px; color: #475569; }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0"></script>
@@ -39,6 +40,17 @@
 
   <main>
     <section>
+      <div class="row">
+        <div>
+          <label for="dataSource">Data Source</label>
+          <select id="dataSource">
+            <option value="zip" selected>Zip code data</option>
+            <option value="econ">Economic data</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="zipControls">
       <div class="row">
         <div>
           <label for="etfSel">3× ETF Preset</label>
@@ -110,37 +122,75 @@
           <span id="status" class="muted"></span>
         </div>
       </div>
-    </section>
+      </div><!-- end zipControls -->
 
-    <section id="summarySec" class="hidden">
+      <div id="econControls" class="hidden">
+        <div class="row">
+          <div>
+            <label for="econMonth">Month</label>
+            <select id="econMonth">
+              <option value="1">January</option>
+              <option value="2">February</option>
+              <option value="3">March</option>
+              <option value="4">April</option>
+              <option value="5">May</option>
+              <option value="6">June</option>
+              <option value="7">July</option>
+              <option value="8">August</option>
+              <option value="9">September</option>
+              <option value="10">October</option>
+              <option value="11">November</option>
+              <option value="12">December</option>
+            </select>
+          </div>
+          <div>
+            <label for="econYear">Year</label>
+            <select id="econYear">
+              <option value="2024">2024</option>
+              <option value="2023">2023</option>
+              <option value="2022">2022</option>
+              <option value="2021">2021</option>
+              <option value="2020">2020</option>
+            </select>
+          </div>
+          <div class="center">
+            <button id="econFetch" class="primary">Fetch</button>
+            <button id="econDlBtn" class="ghost" disabled>Download CSV</button>
+          </div>
+        </div>
+      </div>
+      </section>
+
+      <section id="summarySec" class="hidden">
       <h2>Summary</h2>
       <div class="flex">
         <div class="tag" id="summaryTag"></div>
         <div class="muted" id="feeInfo"></div>
       </div>
       <p class="muted">Returns use daily closes. Synthetic series starts at value 1 on its first row.</p>
-      <div class="grid">
-        <table id="metricsTbl">
-          <thead>
-            <tr>
-              <th>Window</th>
-              <th>Obs</th>
-              <th>Avg (Index)</th>
-              <th>Std Dev (Index)</th>
-              <th>Avg (Synth)</th>
-              <th>Std Dev (Synth)</th>
-              <th>Avg (3× ETF)</th>
-              <th>Std Dev (3× ETF)</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
-    </section>
+        <div class="grid">
+          <table id="metricsTbl">
+            <thead>
+              <tr>
+                <th>Window <span class="info-icon" title="Rolling window length in years">&#9432;</span></th>
+                <th>Obs <span class="info-icon" title="Number of observations">&#9432;</span></th>
+                <th>Avg (Index) <span class="info-icon" title="Average CAGR of the index">&#9432;</span></th>
+                <th>Std Dev (Index) <span class="info-icon" title="Volatility of index CAGR">&#9432;</span></th>
+                <th>Avg (Synth) <span class="info-icon" title="Average CAGR of synthetic series">&#9432;</span></th>
+                <th>Std Dev (Synth) <span class="info-icon" title="Volatility of synthetic series CAGR">&#9432;</span></th>
+                <th>Avg (3× ETF) <span class="info-icon" title="Average CAGR of actual 3× ETF">&#9432;</span></th>
+                <th>Std Dev (3× ETF) <span class="info-icon" title="Volatility of actual 3× ETF CAGR">&#9432;</span></th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="note">Source: Calculations using Alpha Vantage data.</div>
+      </section>
 
-    <section id="chartSec" class="hidden">
-      <h2>Rolling CAGR</h2>
-      <div class="row">
+      <section id="chartSec" class="hidden">
+        <h2>Rolling CAGR</h2>
+        <div class="row">
         <div>
           <label for="rollSel">Window</label>
           <select id="rollSel">
@@ -181,8 +231,8 @@
 
     <footer>
       Data from <a href="https://www.alphavantage.co/">Alpha Vantage</a>. Education/research use only.
-    </footer>
-
+      </footer>
+<script src="script.js"></script>
 <script>
 const $ = sel => document.querySelector(sel);
 
