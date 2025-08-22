@@ -43,11 +43,11 @@
           <label for="etfSel">3× ETF Preset</label>
           <select id="etfSel">
             <option value="">None</option>
-            <option data-index="^spx" data-fee="0.0091">UPRO – ProShares UltraPro S&amp;P 500</option>
-            <option data-index="QQQ" data-fee="0.0095">TQQQ – ProShares UltraPro QQQ</option>
-            <option data-index="^dji" data-fee="0.0095">UDOW – ProShares UltraPro Dow30</option>
-            <option data-index="IWM" data-fee="0.0095">URTY – ProShares UltraPro Russell 2000</option>
-            <option data-index="XLF" data-fee="0.0099">FAS – Direxion Daily Financial Bull 3X</option>
+            <option value="UPRO" data-index="SPY" data-fee="0.91">UPRO – ProShares UltraPro S&amp;P 500</option>
+            <option value="TQQQ" data-index="QQQ" data-fee="0.95">TQQQ – ProShares UltraPro QQQ</option>
+            <option value="UDOW" data-index="DIA" data-fee="0.95">UDOW – ProShares UltraPro Dow30</option>
+            <option value="URTY" data-index="IWM" data-fee="0.95">URTY – ProShares UltraPro Russell 2000</option>
+            <option value="FAS" data-index="XLF" data-fee="0.99">FAS – Direxion Daily Financial Bull 3X</option>
           </select>
           <div class="note">Prefills index and fee for popular 3× ETFs.</div>
         </div>
@@ -82,8 +82,8 @@
         </div>
         <div>
           <label for="annFee">Annual Expense Ratio</label>
-          <input id="annFee" type="number" step="0.0001" value="0.0091" placeholder="e.g., 0.0091" />
-          <div class="note">Annual ratio in decimal (e.g., <code>0.0091</code>) converted to daily using 252 trading days.</div>
+          <input id="annFee" type="number" step="0.01" value="0.91" placeholder="e.g., 0.91" />
+          <div class="note">Annual ratio in percent (e.g., <code>0.91</code>) converted to daily using 252 trading days.</div>
         </div>
         <div>
           <label for="drag">Extra Daily Drag</label>
@@ -128,6 +128,8 @@
               <th>Std Dev (Index)</th>
               <th>Avg (Synth)</th>
               <th>Std Dev (Synth)</th>
+              <th>Avg (3× ETF)</th>
+              <th>Std Dev (3× ETF)</th>
             </tr>
           </thead>
           <tbody></tbody>
@@ -186,21 +188,16 @@ const previewTBody = $("#previewTbl tbody");
 
 let lastCsvText = "";
 let lastRows = [];
+let lastActualRows = [];
 
 etfSel.addEventListener("change", () => {
   const opt = etfSel.selectedOptions[0];
   if (!opt || !opt.dataset.index) return;
   annFee.value = opt.dataset.fee || "";
   levSel.value = "3";
-  const idx = opt.dataset.index;
-  if (idx === "^spx" || idx === "^dji") {
-    indexSel.value = idx;
-    indexSel.dispatchEvent(new Event("change"));
-  } else {
-    indexSel.value = "custom";
-    indexSel.dispatchEvent(new Event("change"));
-    customSym.value = idx;
-  }
+  indexSel.value = "custom";
+  indexSel.dispatchEvent(new Event("change"));
+  customSym.value = opt.dataset.index;
 });
 
 indexSel.addEventListener("change", () => {
@@ -317,6 +314,22 @@ function allCagrs(rows, years) {
   return { idx, lev };
 }
 
+function allCagrsActual(rows, years) {
+  const out = [];
+  for (let i = 0; i < rows.length; i++) {
+    const start = rows[i];
+    const startDate = toISODate(start.date);
+    const endDate = new Date(startDate);
+    endDate.setUTCFullYear(endDate.getUTCFullYear() + years);
+    let j = i;
+    while (j < rows.length && toISODate(rows[j].date) < endDate) j++;
+    if (j >= rows.length) break;
+    const end = rows[j];
+    out.push(cagr(start.close, end.close, years));
+  }
+  return out;
+}
+
 function fmtPct(x) { return Number.isFinite(x) ? (x * 100).toFixed(2) + "%" : "—"; }
 function fmtNum(x) { return Number.isFinite(x) ? x.toLocaleString(undefined, { maximumFractionDigits: 6 }) : "—"; }
 
@@ -360,12 +373,13 @@ function populateMetrics(rows, feeDay, endISO) {
   const endDateStr = endRow.date;
 
   summaryTag.textContent = `End: ${endDateStr}`;
-  const ann = Number(annFee.value);
-  feeInfo.textContent = `Daily fee from annual ${(ann*100).toFixed(2)}% ≈ ${(feeDay*100).toFixed(3)} bps/day · Leverage ${levSel.value}×`;
+  const annPct = Number(annFee.value);
+  feeInfo.textContent = `Daily fee from annual ${annPct.toFixed(2)}% ≈ ${(feeDay*100).toFixed(3)} bps/day · Leverage ${levSel.value}×`;
 
   for (const y of periods) {
     const { idx, lev } = allCagrs(rows, y);
     if (idx.length === 0) continue;
+    const act = lastActualRows.length ? allCagrsActual(lastActualRows, y) : [];
     const tr = document.createElement("tr");
     const cells = [
       y + "y",
@@ -373,7 +387,9 @@ function populateMetrics(rows, feeDay, endISO) {
       fmtPct(mean(idx)),
       fmtPct(stdDev(idx)),
       fmtPct(mean(lev)),
-      fmtPct(stdDev(lev))
+      fmtPct(stdDev(lev)),
+      fmtPct(act.length ? mean(act) : NaN),
+      fmtPct(act.length ? stdDev(act) : NaN)
     ];
     cells.forEach(txt => {
       const td = document.createElement("td");
@@ -417,24 +433,37 @@ runBtn.addEventListener("click", async () => {
       const raw = parseAlphaVantageCsv(csv).sort((a,b) => a.date.localeCompare(b.date));
       if (raw.length < 2) throw new Error("Insufficient rows from Alpha Vantage.");
 
+      let actualRaw = [];
+      if (etfSel.value) {
+        const etfSym = symbolFor(etfSel.value);
+        const urlEtf = `https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=${encodeURIComponent(etfSym)}&apikey=${key}&outputsize=full&datatype=csv`;
+        const csvEtf = await fetchCsv(urlEtf);
+        actualRaw = parseAlphaVantageCsv(csvEtf).sort((a,b) => a.date.localeCompare(b.date));
+      }
+
     // Clip to end date if provided
     const endStr = (endDate.value || "").trim();
     let data = raw, endISO = "";
+    let actualData = actualRaw;
     if (endStr) {
       const cut = new Date(endStr + "T00:00:00Z");
       data = raw.filter(r => new Date(r.date + "T00:00:00Z") <= cut);
       if (data.length < 2) throw new Error("End date too early—no data remains.");
       endISO = data[data.length - 1].date;
+      if (actualRaw.length) {
+        actualData = actualRaw.filter(r => new Date(r.date + "T00:00:00Z") <= cut);
+      }
     }
 
     const leverage = Number(levSel.value);
-    const annualExpense = Number(annFee.value || 0);
+    const annualExpense = Number(annFee.value || 0) / 100;
     const extraDrag = Number(drag.value || 0);
 
     const { rows, feeDay } = computeSeries(data, leverage, annualExpense, extraDrag);
 
     lastRows = rows;
     lastCsvText = buildCsv(rows);
+    lastActualRows = actualData;
 
     // UI
     previewTBody.innerHTML = "";
